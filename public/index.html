@@ -65,7 +65,16 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 .week .col i{display:block;width:100%;background:var(--ink)}
 .week .col i.over{background:var(--acc)}
 .add{background:var(--soft);padding:16px;margin-bottom:22px}
-.add>label{font-weight:800;display:block;margin-bottom:6px}
+.add label.big{font-weight:800;display:block;margin:14px 0 6px}
+.top{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+.modes{display:flex}
+.modes button{border-width:2px;font-weight:600}
+.modes button+button{margin-left:-2px}
+.modes button.on{background:var(--ink);color:var(--bg);font-weight:800}
+.mgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}
+.mgrid .wide{grid-column:span 2}
+.mgrid label{font-size:14px;color:var(--mut);display:block}
+.mgrid input{width:100%;min-height:44px;padding:0 10px;border:2px solid var(--ink);background:var(--bg);font-size:16px}
 .addrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 select{min-height:44px;padding:0 10px;border:2px solid var(--ink);background:var(--bg);font-size:16px}
 textarea{width:100%;min-height:96px;padding:12px;border:2px solid var(--ink);background:var(--bg);font-size:16px;resize:vertical;display:block}
@@ -101,7 +110,7 @@ summary{font-weight:800;cursor:pointer;min-height:44px;display:flex;align-items:
 #toast.on{transform:translate(-50%,0)}
 #toast button{background:transparent;color:var(--bg);border-color:var(--bg)}
 @media(max-width:820px){.grid{grid-template-columns:minmax(0,1fr)}}
-@media(max-width:600px){.it{grid-template-columns:minmax(0,1fr) auto}.nums{grid-column:1/-1;justify-content:flex-start}.goals,.ed{grid-template-columns:repeat(2,minmax(0,1fr))}.nav b{min-width:7.5em}.who span{display:none}}
+@media(max-width:600px){.it{grid-template-columns:minmax(0,1fr) auto}.nums{grid-column:1/-1;justify-content:flex-start}.goals,.ed,.mgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.nav b{min-width:7.5em}.who span{display:none}}
 @media(prefers-reduced-motion:reduce){.bar i,#toast{transition:none}}
 </style>
 </head>
@@ -150,16 +159,37 @@ summary{font-weight:800;cursor:pointer;min-height:44px;display:flex;align-items:
     </aside>
 
     <section>
-      <form class="add" id="form">
-        <label for="food">¿Qué has comido?</label>
-        <textarea id="food" maxlength="1500" placeholder="Ej: 3 huevos revueltos, 2 tostadas con aceite y un plátano"></textarea>
-        <div class="addrow">
+      <div class="add">
+        <div class="top">
+          <div class="modes" id="modes" role="tablist" aria-label="Forma de añadir">
+            <button type="button" role="tab" data-m="ai" id="modeAi" hidden>Con IA</button>
+            <button type="button" role="tab" data-m="manual" class="on" aria-selected="true">A mano</button>
+          </div>
           <select id="meal" aria-label="Comida del día"></select>
-          <label class="photo"><input type="file" id="photo" accept="image/*"><span class="pick">Añadir foto</span><span id="photoName"></span></label>
-          <button class="go" id="go" type="submit">Calcular con IA</button>
         </div>
-        <p id="msg">Escríbelo como se lo dirías a alguien, o añade una foto del plato. Con gramos, el cálculo es más preciso.</p>
-      </form>
+
+        <form id="form" hidden>
+          <label class="big" for="food">¿Qué has comido?</label>
+          <textarea id="food" maxlength="1500" placeholder="Ej: 3 huevos revueltos, 2 tostadas con aceite y un plátano"></textarea>
+          <div class="addrow">
+            <label class="photo"><input type="file" id="photo" accept="image/*"><span class="pick">Añadir foto</span><span id="photoName"></span></label>
+            <button class="go" id="go" type="submit">Calcular con IA</button>
+          </div>
+        </form>
+
+        <form id="manual">
+          <div class="mgrid">
+            <div class="wide"><label for="mn">Alimento</label><input id="mn" maxlength="80" placeholder="Pechuga de pollo" autocomplete="off"></div>
+            <div class="wide"><label for="mq">Cantidad</label><input id="mq" maxlength="40" placeholder="200 g" autocomplete="off"></div>
+            <div><label for="mk">Kcal</label><input id="mk" type="number" inputmode="numeric" min="0" placeholder="0"></div>
+            <div><label for="mp">Proteína (g)</label><input id="mp" type="number" inputmode="decimal" min="0" placeholder="0"></div>
+            <div><label for="mc">Carbos (g)</label><input id="mc" type="number" inputmode="decimal" min="0" placeholder="0"></div>
+            <div><label for="mf">Grasa (g)</label><input id="mf" type="number" inputmode="decimal" min="0" placeholder="0"></div>
+          </div>
+          <div class="addrow"><button class="go" id="mgo" type="submit">Añadir alimento</button></div>
+        </form>
+        <p id="msg">Apunta el alimento con sus macros (vienen en la etiqueta del envase).</p>
+      </div>
       <div id="log"></div>
     </section>
   </div>
@@ -339,6 +369,30 @@ for(const[k]of M){
   const inp=$('#g'+k);
   inp.addEventListener('change',()=>{goals[k]=num(inp.value);saveGoals();render()});
 }
+/* ---------- modo: con IA / a mano ---------- */
+const HINT={ai:'Escríbelo como se lo dirías a alguien, o añade una foto del plato. Con gramos, el cálculo es más preciso.',manual:'Apunta el alimento con sus macros (vienen en la etiqueta del envase).'};
+function setMode(m){
+  for(const b of document.querySelectorAll('#modes button')){const on=b.dataset.m===m;b.classList.toggle('on',on);b.setAttribute('aria-selected',on)}
+  $('#form').hidden=m!=='ai';$('#manual').hidden=m!=='manual';setMsg(HINT[m]);
+}
+$('#modes').addEventListener('click',e=>{const b=e.target.closest('button[data-m]');if(b)setMode(b.dataset.m)});
+
+async function addManual(e){
+  e.preventDefault();
+  const n=$('#mn').value.trim();
+  if(!n){setMsg('Escribe el nombre del alimento.',true);$('#mn').focus();return}
+  const meal=$('#meal').value,btn=$('#mgo');btn.disabled=true;
+  try{
+    const {data,error}=await sb.from('food_items').insert(toRow({meal,n:n.slice(0,80),q:$('#mq').value.trim().slice(0,40),k:$('#mk').value,p:$('#mp').value,c:$('#mc').value,f:$('#mf').value})).select().single();
+    if(error)throw error;
+    items.push(fromRow(data));
+    for(const id of ['mn','mq','mk','mp','mc','mf'])$('#'+id).value='';
+    setMsg(`Añadido a ${meal.toLowerCase()}: ${data.name}.`);render();$('#mn').focus();
+  }catch(err){dbErr(err)}
+  btn.disabled=false;
+}
+$('#manual').addEventListener('submit',addManual);
+
 $('#meal').innerHTML=MEALS.map(m=>`<option${m===defMeal()?' selected':''}>${m}</option>`).join('');
 
 /* ---------- sesión ---------- */
@@ -366,6 +420,7 @@ async function show(session){
     const r=await fetch('/api/config');const cfg=await r.json();
     if(!cfg.supabaseUrl||!cfg.supabaseAnonKey)throw new Error('Faltan las variables SUPABASE_URL y SUPABASE_ANON_KEY en Netlify.');
     sb=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey);
+    if(cfg.aiEnabled){$('#modeAi').hidden=false;setMode('ai')}
   }catch(e){$('#loginView').hidden=false;$('#gLogin').disabled=true;$('#loginMsg').textContent='No se pudo cargar la configuración. '+e.message;return}
   sb.auth.onAuthStateChange((_ev,session)=>{setTimeout(()=>show(session),0)});
   const {data:{session}}=await sb.auth.getSession();
