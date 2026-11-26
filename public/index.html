@@ -101,6 +101,14 @@ textarea{width:100%;min-height:96px;padding:12px;border:2px solid var(--ink);bac
 .ed label{font-size:13px;color:var(--mut);display:block}
 .ed .btns{grid-column:1/-1;display:flex;gap:8px}
 .empty{color:var(--mut);padding:24px 0;border-top:3px solid var(--ink)}
+.pend{color:var(--acc);font-weight:800;font-size:14px;white-space:nowrap;border:2px solid var(--acc);padding:2px 8px}
+.bridge{margin-top:28px;border:3px solid var(--ink);padding:16px}
+.bridge h3{margin:0 0 4px;font-size:18px;font-weight:900}
+.bsub{margin:0;color:var(--mut);font-size:14px}
+.bridge textarea{margin-top:10px;min-height:140px;font-size:14px}
+#bmsg{min-height:1.5em;font-size:14px;margin:8px 0 0;color:var(--mut)}
+#bmsg.err{color:var(--acc)}
+#bmsg.ok{color:var(--ink);font-weight:600}
 details{margin-top:22px;border-top:1px solid var(--line);padding-top:10px}
 summary{font-weight:800;cursor:pointer;min-height:44px;display:flex;align-items:center}
 .goals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
@@ -181,16 +189,31 @@ summary{font-weight:800;cursor:pointer;min-height:44px;display:flex;align-items:
           <div class="mgrid">
             <div class="wide"><label for="mn">Alimento</label><input id="mn" maxlength="80" placeholder="Pechuga de pollo" autocomplete="off"></div>
             <div class="wide"><label for="mq">Cantidad</label><input id="mq" maxlength="40" placeholder="200 g" autocomplete="off"></div>
-            <div><label for="mk">Kcal</label><input id="mk" type="number" inputmode="numeric" min="0" placeholder="0"></div>
-            <div><label for="mp">Proteína (g)</label><input id="mp" type="number" inputmode="decimal" min="0" placeholder="0"></div>
-            <div><label for="mc">Carbos (g)</label><input id="mc" type="number" inputmode="decimal" min="0" placeholder="0"></div>
-            <div><label for="mf">Grasa (g)</label><input id="mf" type="number" inputmode="decimal" min="0" placeholder="0"></div>
+            <div><label for="mk">Kcal</label><input id="mk" type="number" inputmode="numeric" min="0" placeholder="opcional"></div>
+            <div><label for="mp">Proteína (g)</label><input id="mp" type="number" inputmode="decimal" min="0" placeholder="opcional"></div>
+            <div><label for="mc">Carbos (g)</label><input id="mc" type="number" inputmode="decimal" min="0" placeholder="opcional"></div>
+            <div><label for="mf">Grasa (g)</label><input id="mf" type="number" inputmode="decimal" min="0" placeholder="opcional"></div>
           </div>
           <div class="addrow"><button class="go" id="mgo" type="submit">Añadir alimento</button></div>
         </form>
-        <p id="msg">Apunta el alimento con sus macros (vienen en la etiqueta del envase).</p>
+        <p id="msg">Apunta el alimento y la cantidad. Los macros son opcionales: puedes calcularlos luego con cualquier IA.</p>
       </div>
       <div id="log"></div>
+
+      <div class="bridge" id="bridge">
+        <h3>Calcular macros con tu IA</h3>
+        <p class="bsub">1. Copia las comidas sin macros. 2. Pégalas en ChatGPT, Claude o la IA que uses. 3. Copia su respuesta entera y pégala aquí.</p>
+        <div class="addrow">
+          <button type="button" id="copyAi">Copiar para la IA</button>
+          <button type="button" id="pasteToggle">Pegar respuesta</button>
+        </div>
+        <textarea id="copyFallback" readonly hidden aria-label="Texto para la IA"></textarea>
+        <div id="pastePanel" hidden>
+          <textarea id="aiReply" placeholder="Pega aquí la respuesta completa de la IA"></textarea>
+          <div class="addrow"><button class="go" id="applyAi" type="button">Rellenar macros</button></div>
+        </div>
+        <p id="bmsg"></p>
+      </div>
     </section>
   </div>
 </main>
@@ -220,6 +243,7 @@ const toRow=i=>({day:cur,meal:i.meal,name:i.n,quantity:i.q,kcal:num(i.k),protein
 
 function setMsg(t,err){const m=$('#msg');m.textContent=t;m.className=err?'err':''}
 function dbErr(e){console.error(e);setMsg('Error con la base de datos: '+(e.message||e),true)}
+const pending=i=>!num(i.k)&&!num(i.p)&&!num(i.c)&&!num(i.f);
 function totals(l){return l.reduce((t,i)=>{for(const[k]of M)t[k]+=num(i[k]);return t},{k:0,p:0,c:0,f:0})}
 
 /* ---------- datos ---------- */
@@ -258,7 +282,9 @@ function render(){
     return `<div class="row"><div class="rh"><b>${name}</b><span class="v">${v}<small> / ${g} ${u}</small></span></div><div class="bar"><i class="${v>g*1.1?'over':''}" style="width:${pct}%"></i></div><div class="rest ${cls}">${txt}</div></div>`;
   }).join('');
   const hit=M.filter(([k])=>goals[k]&&t[k]>=goals[k]*0.95).length;
-  $('#verdict').textContent=!items.length?'Aún no has apuntado nada.':hit===4?'Los 4 objetivos alcanzados. Buen día.':`${hit} de 4 objetivos alcanzados`;
+  const np=items.filter(pending).length;
+  $('#verdict').textContent=!items.length?'Aún no has apuntado nada.':(hit===4?'Los 4 objetivos alcanzados. Buen día.':`${hit} de 4 objetivos alcanzados`)+(np?` · ${np} sin macros`:'');
+  $('#copyAi').textContent=np?`Copiar ${np} para la IA`:'Copiar para la IA';
 
   const groups=MEALS.map(m=>[m,items.filter(i=>i.meal===m)]).filter(g=>g[1].length);
   $('#log').innerHTML=groups.length?groups.map(([m,l])=>{
@@ -277,7 +303,7 @@ function row(i){
     <div><label>Grasa</label><input data-f="f" type="number" inputmode="numeric" value="${num(i.f)}"></div>
     <div class="btns"><button data-a="ok">Guardar</button><button data-a="cancel">Cancelar</button></div></div>`;
   return `<div class="it" data-id="${esc(i.id)}"><div class="nm"><b>${esc(i.n)}</b><small>${esc(i.q)}</small></div>
-    <div class="nums"><span>${num(i.k)}<em>kcal</em></span><span>${num(i.p)}<em>P</em></span><span>${num(i.c)}<em>C</em></span><span>${num(i.f)}<em>G</em></span></div>
+    ${pending(i)?'<div class="nums"><span class="pend">Sin macros</span></div>':`<div class="nums"><span>${num(i.k)}<em>kcal</em></span><span>${num(i.p)}<em>P</em></span><span>${num(i.c)}<em>C</em></span><span>${num(i.f)}<em>G</em></span></div>`}
     <div class="act"><button data-a="edit">Editar</button><button data-a="del" aria-label="Borrar ${esc(i.n)}">✕</button></div></div>`;
 }
 function renderWeek(){
@@ -370,7 +396,66 @@ for(const[k]of M){
   inp.addEventListener('change',()=>{goals[k]=num(inp.value);saveGoals();render()});
 }
 /* ---------- modo: con IA / a mano ---------- */
-const HINT={ai:'Escríbelo como se lo dirías a alguien, o añade una foto del plato. Con gramos, el cálculo es más preciso.',manual:'Apunta el alimento con sus macros (vienen en la etiqueta del envase).'};
+const HINT={ai:'Escríbelo como se lo dirías a alguien, o añade una foto del plato. Con gramos, el cálculo es más preciso.',manual:'Apunta el alimento y la cantidad. Los macros son opcionales: puedes calcularlos luego con cualquier IA.'};
+
+/* ---------- puente manual con cualquier IA ---------- */
+function bMsg(t,cls){const m=$('#bmsg');m.textContent=t;m.className=cls||''}
+function buildPrompt(list){
+  const fecha=new Date(cur+'T12:00:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  const lines=list.map(i=>`- id: ${i.id} | ${i.meal} | ${i.n}${i.q?` | cantidad: ${i.q}`:' | cantidad: sin indicar'}`).join('\n');
+  const ej=JSON.stringify([{id:list[0].id,cantidad:list[0].q||'1 ración (~250 g)',kcal:0,proteina:0,carbohidratos:0,grasa:0}]);
+  return `Eres un nutricionista deportivo. Calcula los macronutrientes de estos alimentos que he comido (${fecha}), uno por uno.
+Reglas:
+- Usa valores de referencia estándar (BEDCA o USDA), del alimento ya cocinado si está cocinado.
+- Si no indico cantidad, asume una ración típica en España y escríbela en "cantidad".
+- kcal y gramos como números enteros.
+- Copia cada "id" EXACTAMENTE como aparece.
+
+Alimentos:
+${lines}
+
+Responde SOLO con un bloque JSON (sin explicaciones), un objeto por alimento, con este formato exacto:
+${ej}`;
+}
+$('#copyAi').addEventListener('click',async()=>{
+  if(!items.length){bMsg('No hay comidas apuntadas este día.','err');return}
+  const pend=items.filter(pending),list=pend.length?pend:items;
+  const text=buildPrompt(list),fb=$('#copyFallback');
+  try{await navigator.clipboard.writeText(text);fb.hidden=true;
+    bMsg(`Copiado (${list.length} alimento${list.length>1?'s':''}${pend.length?'':', todos ya tenían macros: se recalcularán'}). Pégalo en tu IA y luego pulsa "Pegar respuesta".`,'ok');
+  }catch(e){fb.value=text;fb.hidden=false;fb.focus();fb.select();bMsg('No he podido copiar solo: el texto está seleccionado abajo, cópialo con Ctrl+C.','err')}
+});
+$('#pasteToggle').addEventListener('click',()=>{const p=$('#pastePanel');p.hidden=!p.hidden;if(!p.hidden)$('#aiReply').focus()});
+function parseReply(t){
+  t=t.replace(/```(?:json)?/gi,'');
+  const s=t.indexOf('['),e=t.lastIndexOf(']');
+  if(s<0||e<=s)throw new Error('No encuentro el bloque JSON [ ... ] en lo que has pegado.');
+  let arr;try{arr=JSON.parse(t.slice(s,e+1))}catch(_){throw new Error('El JSON de la respuesta no es válido. Pide a la IA que responda solo con el JSON.')}
+  if(!Array.isArray(arr))throw new Error('La respuesta no es una lista de alimentos.');
+  return arr;
+}
+$('#applyAi').addEventListener('click',async()=>{
+  const raw=$('#aiReply').value.trim();
+  if(!raw){bMsg('Pega primero la respuesta de la IA.','err');return}
+  let arr;try{arr=parseReply(raw)}catch(e){bMsg(e.message,'err');return}
+  const btn=$('#applyAi');btn.disabled=true;btn.textContent='Rellenando…';
+  let ok=0,miss=0;
+  for(const x of arr){
+    const id=String(x&&x.id||'').trim();
+    if(!/^[0-9a-f-]{36}$/i.test(id)){miss++;continue}
+    const local=items.find(i=>i.id===id);
+    const upd={kcal:num(x.kcal),protein:num(x.proteina),carbs:num(x.carbohidratos),fat:num(x.grasa)};
+    if(x.cantidad&&(!local||!local.q))upd.quantity=String(x.cantidad).slice(0,40);
+    const {data,error}=await sb.from('food_items').update(upd).eq('id',id).select('id');
+    if(error||!data||!data.length){miss++;continue}
+    ok++;
+    if(local)Object.assign(local,{k:upd.kcal,p:upd.protein,c:upd.carbs,f:upd.fat},upd.quantity?{q:upd.quantity}:{});
+  }
+  btn.disabled=false;btn.textContent='Rellenar macros';
+  render();await loadWeek();renderWeek();
+  if(ok){$('#aiReply').value='';$('#pastePanel').hidden=true}
+  bMsg(ok?`Macros rellenados en ${ok} alimento${ok>1?'s':''}.${miss?` ${miss} no se han encontrado.`:''}`:'No se ha rellenado ninguno: revisa que la respuesta tenga los mismos id.',ok?'ok':'err');
+});
 function setMode(m){
   for(const b of document.querySelectorAll('#modes button')){const on=b.dataset.m===m;b.classList.toggle('on',on);b.setAttribute('aria-selected',on)}
   $('#form').hidden=m!=='ai';$('#manual').hidden=m!=='manual';setMsg(HINT[m]);
